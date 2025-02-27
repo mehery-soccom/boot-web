@@ -1,18 +1,12 @@
 <template>
-  <div id="app">
-    <NoteBook msg="Welcome to Your Vue.js App"/>
-  </div>
+   <router-view></router-view>
 </template>
 
 <script>
-//import HelloWorld from './components/HelloWorld.vue'
-import NoteBook from './Modules/NoteBook.vue'
-
 
 export default {
   name: 'App',
   components: {
-    NoteBook
   }
 }
 </script>

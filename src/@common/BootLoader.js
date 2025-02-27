@@ -3,7 +3,7 @@ import Vue from "vue";
 import BootRouter from "./BootRouter";
 import AppWrapper from "./AppWrapper";
 
-export default function Bootloader() {
+export default function Bootloader(appConfig) {
   let configs = {};
   this.map = function (...apps) {
     if (apps) {
@@ -13,6 +13,12 @@ export default function Bootloader() {
     }
     return this;
   };
+
+  for(let key in appConfig.apps){
+    let app = appConfig.apps[key];
+    app.name = key;
+    this.map(app)
+  }
 
   this.getApp = function(appName){
     return configs[appName];
@@ -26,7 +32,8 @@ export default function Bootloader() {
     return this;
   };
 
-  this.load = function (appName, site = "") {
+  this.mount = function (appName, site = "") {
+    appName = appName || appConfig.getAppName()
     var config = configs[appName] || configs.dev;
     if (config?.alias) {
       appName = config.alias;
@@ -51,7 +58,7 @@ export default function Bootloader() {
         el: "#app",
         //store,service,i18n,
         ...MODULES,
-        router: BootRouter.router(router),
+        router: BootRouter.router(router.default),
         template: `<AppWrapper app="${appComponent}"/>`,
         components: { AppWrapper },
       });

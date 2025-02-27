@@ -1,15 +1,15 @@
 <template>
-  <div id="app">
-  </div>
+  <div>
+    Chat Application
+    <router-view></router-view>
+  </div>  
 </template>
 
 <script>
-//import HelloWorld from './components/HelloWorld.vue'
 
 export default {
   name: 'App',
   components: {
-    //HelloWorld,
   }
 }
 </script>
