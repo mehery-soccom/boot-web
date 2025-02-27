@@ -8,8 +8,8 @@ module.exports = {
   runtimeCompiler: true,
   productionSourceMap: false,
   filenameHashing: false,
-  
-  publicPath: publicPath,
+
+  publicPath: process.env.NODE_ENV === "production" ? "./" : "/",
   configureWebpack: {
     resolve: {
       alias: {
