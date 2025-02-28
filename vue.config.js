@@ -17,8 +17,8 @@ module.exports = {
   publicPath: process.env.NODE_ENV === "production" ? "./" : "/",
   configureWebpack: config => {
     // Set output filename format
-    config.output = config.output || {};
-    config.output.filename = "app-[name].js";
+    //config.output = config.output || {};
+    ///config.output.filename = "app-[name].js";
 
     // Add Webpack alias for `@app`
     config.resolve = config.resolve || {};
@@ -42,5 +42,5 @@ module.exports = {
       type: "javascript/auto"
     });
   },
-  pages: appConfig.getPages()
+  //pages: appConfig.getPages()
 };

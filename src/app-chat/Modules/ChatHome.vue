@@ -80,11 +80,12 @@ export default {
         },
       }, // specifies the color scheme for the component
       alwaysScrollToBottom: false, // when set to true always scrolls the chat to the bottom when new events are in (new message, user starts typing...)
-      messageStyling: true, // enables *bold* /emph/ _underline_ and such (more info at github.com/mattezza/msgdown)
+      messageStyling: true, // enables *bold* /emph/ _underline_ and such (more info at github.com/mattezza/msgdown),
+      polling : false
     };
   },
   mounted() {
-    this.pollMessage();
+    
   },
   methods: {
     async onMessageWasSent(message) {
@@ -110,6 +111,11 @@ export default {
       }
     },
     openChat() {
+      if(!this.polling){
+         this.pollMessage();
+         this.polling = true;
+      }
+     
       // called when the user clicks on the fab button to open the chat
       this.isChatOpen = true;
       this.newMessagesCount = 0;

@@ -19,12 +19,17 @@ try{
 		}
 	}
 }
-console.log("preloader",window.CONST,process.env?.VUE_APP_TIMESTAMP);
+
+let VUE_APP_VERSION = process.env?.VUE_APP_VERSION;
+let VUE_APP_TIMESTAMP = process.env?.VUE_APP_TIMESTAMP
+
+
+console.log("preloader",window.CONST,VUE_APP_TIMESTAMP);
 try {
 	console.log(`
 	################################# CDN DETAILS #################################
-	VERSION :: ${process.env?.VUE_APP_VERSION || "-"}
-	BUILD TIME :: ${process.env?.VUE_APP_TIMESTAMP ? new Date(Number(process.env.VUE_APP_TIMESTAMP)) : "-"}
+	VERSION :: ${VUE_APP_VERSION || "-"}
+	BUILD TIME :: ${VUE_APP_TIMESTAMP ? new Date(Number(VUE_APP_TIMESTAMP)) : "-"}
 	###############################################################################
 `);
 } catch (error) {
