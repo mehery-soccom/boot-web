@@ -6,7 +6,7 @@ if(window.CONST && window.CONST.CDN_URL){
 window.callMobileEventListener = function(options){
 	console.log("callMobileEventListener",options)
 }
-window.parent.postMessage("SocComApp", '*');
+window.parent.postMessage("BootVueApp", '*');
 try{
 	window.localStorage.getItem;
 } catch(e){
