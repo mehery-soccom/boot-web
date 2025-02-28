@@ -9,11 +9,11 @@ module.exports = AppConfig.extend({
       // title: "Customer Aapp",
       // chunks: ["chunk-vendors", "chunk-common", "customer"],
       component: () => import("@/app-chat/AppChat.vue"),
-      publicPath: "/chat",
+      context: "/chat",
     },
     default: {
       component: () => import("@/app/App.vue"),
-      publicPath: "/default",
+      context : "/"
     },
   },
 });

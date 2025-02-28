@@ -13,7 +13,7 @@ export default BootRouter.route({
     {
       path: "/home",
       name: "HomePage",
-      component: () => import("./Modules/HomePage.vue"),
+      component: () => import("./Modules/ChatHome.vue"),
     },
   ],
 });

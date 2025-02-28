@@ -1,11 +1,12 @@
-var CONFIG = {
+let CONFIG = {
   getAppName() {
     let slectedAppName = window.CONST?.APP;
     if (!slectedAppName) {
       for (let key in this.apps) {
         let app = this.apps[key];
-        if (window.location.pathname.indexOf(app.publicPath) === 0) {
+        if (window.location.pathname.indexOf(app.context) === 0) {
           slectedAppName = key;
+          break;
         }
       }
     }
@@ -32,6 +33,7 @@ var CONFIG = {
     return pages;
   },
   getApp(appName) {
+    if(!appName) appName = this.getAppName();
     return this.apps[appName];
   },
 };

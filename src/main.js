@@ -10,4 +10,6 @@ Vue.config.productionTip = false;
 Vue.use(BootstrapVue);
 
 new BootLoader(appConfig)
-.mount();
+  .modules({
+  })
+  .mount();
