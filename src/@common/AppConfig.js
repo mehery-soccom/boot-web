@@ -23,11 +23,11 @@ let CONFIG = {
     for (let key in this.apps) {
       let app = this.apps[key];
       pages[key] = {
-        entry: app.entry,
-        template: app.template,
-        filename: app.filename,
-        title: app.title,
-        chunks: app.chunks,
+        entry: app.entry || './src/main.js',
+        template: app.template || 'public/index.html',
+        filename: app.filename || 'index.html',
+        title: app.title || key,
+        chunks: app.chunks || ['chunk-vendors', 'chunk-common', key],
       };
     }
     return pages;

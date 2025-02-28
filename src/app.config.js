@@ -10,10 +10,12 @@ module.exports = AppConfig.extend({
       // chunks: ["chunk-vendors", "chunk-common", "customer"],
       component: () => import("@/app-chat/AppChat.vue"),
       context: "/chat",
+      entry: './src/main.js',
     },
     default: {
       component: () => import("@/app/App.vue"),
-      context : "/"
+      context : "/",
+      entry: './src/main.js',
     },
   },
 });
