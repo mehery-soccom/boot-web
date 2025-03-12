@@ -12,6 +12,16 @@ module.exports = AppConfig.extend({
       context: "/chat",
       entry: './src/main.js',
     },
+    scriptus: {
+      // entry: "./src/main.js",
+      // template: "public/app-customer.html",
+      // filename: "app-customer.html",
+      // title: "Customer Aapp",
+      // chunks: ["chunk-vendors", "chunk-common", "customer"],
+      component: () => import("@/app-scriptus/AppScriptus.vue"),
+      context: "/scriptus",
+      entry: './src/main.js',
+    },
     default: {
       component: () => import("@/app/App.vue"),
       context : "/",
