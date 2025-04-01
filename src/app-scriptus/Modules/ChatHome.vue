@@ -1,5 +1,17 @@
 <template>
-  <div class="container mt-4">
+  <div class="">
+    <div class="pane" :style="{ width: width, height: editorHeight }" v-if="showTerminal">
+      <ScriptusTerminal :user="terminal.user" :logs="terminal.logs" :system="terminal.system">
+        <template #terminalbar>
+          <span
+            class="float-right fas fa-ban pointer text-red"
+            v-tooltip="`Clear Logs`"
+            @click="terminal.logs = []"
+          ></span>
+        </template>
+      </ScriptusTerminal>
+    </div>
+
     <CherryWebChat
       :participants="participants"
       :titleImageUrl="titleImageUrl"
@@ -29,10 +41,13 @@
 <script>
 import Vue from "vue";
 import CherryWebChat from "@cherrybase/cherry-webchat";
+import ScriptusTerminal from "./ScriptusTerminal.vue";
+import debounce from "debounce";
+import bindow from "@/@common/utils/bindow";
 Vue.use(CherryWebChat);
 
 export default {
-  components: {},
+  components: { ScriptusTerminal },
   data() {
     return {
       participants: [
@@ -81,11 +96,25 @@ export default {
       }, // specifies the color scheme for the component
       alwaysScrollToBottom: false, // when set to true always scrolls the chat to the bottom when new events are in (new message, user starts typing...)
       messageStyling: true, // enables *bold* /emph/ _underline_ and such (more info at github.com/mattezza/msgdown),
-      polling : false
+      polling: false,
+      editorHeight: window.document.body.scrollHeight - 70 + "px",
+      editorWidth: "100%",
+      width: "100%",
+      showTerminal: true,
+      terminal: {
+        system: ">",
+        user: "lt@someone",
+        logs: [],
+      },
     };
   },
   mounted() {
-    
+    this.onWindowResize = debounce(this.onWindowResize, 2);
+    window.addEventListener("resize", this.onWindowResize);
+    this.onWindowResize();
+  },
+  destroyed: function () {
+    window.removeEventListener("resize", this.onWindowResize);
   },
   methods: {
     async onMessageWasSent(message) {
@@ -111,11 +140,12 @@ export default {
       }
     },
     openChat() {
-      if(!this.polling){
-         this.pollMessage();
-         this.polling = true;
+      if (!this.polling) {
+        this.pollMessage();
+        this.loadLogs();
+        this.polling = true;
       }
-     
+
       // called when the user clicks on the fab button to open the chat
       this.isChatOpen = true;
       this.newMessagesCount = 0;
@@ -135,6 +165,30 @@ export default {
       const m = this.messageList.find((m) => m.id === message.id);
       m.isEdited = true;
       m.data.text = message.data.text;
+    },
+
+    onWindowResize() {
+      let size = bindow.size();
+      this.width = this.showTerminal || this.showSidebar ? "50%" : "100%";
+      this.editorWidth = this.showTerminal || this.showSidebar ? "99%" : "100%";
+      this.editorHeight = size.height - 0 + "px";
+    },
+    async loadLogs() {
+      if (this.showTerminal) {
+        try {
+          if (this.terminal.user) {
+            // let it be
+            let resp = await this.$service.get("/api/console/logs");
+            for (var i in resp.results) {
+              this.terminal.logs.push(resp.results[i].logs);
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      clearTimeout(this.trail);
+      this.trail = setTimeout(() => this.loadLogs(), 2000);
     },
   },
 };
