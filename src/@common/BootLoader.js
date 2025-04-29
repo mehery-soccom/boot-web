@@ -65,8 +65,10 @@ export default function Bootloader(appConfig) {
       throw `Connot Find App(${appName}:${site})`;
     }
 
-    const appPath = "default" == appName ? "app" : `app-${appName}`;
-    const appComponent = "default" == appName ? "app" : `app-${appName}`;
+    let appNameSanitized = appName.replaceAll(/[\/\\]/g, "-");
+    console.log("appNameSanitized", appNameSanitized);
+    const appPath = "default" == appName ? "app" : `app-${appNameSanitized}`;
+    const appComponent = "default" == appName ? "app" : `app-${appNameSanitized}`;
 
     if (typeof config.beforeLoad == "function") {
       config.beforeLoad();

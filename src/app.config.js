@@ -22,6 +22,16 @@ module.exports = AppConfig.extend({
       context: "/scriptus",
       entry: './src/main.js',
     },
+    "nexus/notebook": {
+      // entry: "./src/main.js",
+      // template: "public/app-customer.html",
+      // filename: "app-customer.html",
+      // title: "Customer Aapp",
+      // chunks: ["chunk-vendors", "chunk-common", "customer"],
+      component: () => import("@/app-nexus-notebook/AppNotebook.vue"),
+      context: "/scriptus",
+      entry: './src/main.js',
+    },
     default: {
       component: () => import("@/app/App.vue"),
       context : "/",

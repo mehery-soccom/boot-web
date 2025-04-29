@@ -1,6 +1,6 @@
 let CONFIG = {
   getAppName() {
-    let slectedAppName = window.CONST?.APP;
+    let slectedAppName = window.CONST?.WEBAPP || window.CONST?.APP;
     if (!slectedAppName) {
       for (let key in this.apps) {
         let app = this.apps[key];
