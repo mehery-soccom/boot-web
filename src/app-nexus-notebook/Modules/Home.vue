@@ -1,5 +1,5 @@
 <template>
-  <div class="">
+  <div class="container mt-4">
     <div class="pane">This is Notebook</div>
   </div>
 </template>
