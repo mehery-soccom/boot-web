@@ -31,7 +31,17 @@
       </div>
 
       <div class="data-controls">
-        <button @click="fetchData" class="btn btn-primary">Fetch Data</button>
+        <button @click="refreshData" class="btn btn-primary">Refresh Data</button>
+        <button 
+          @click="updateEditedItems" 
+          class="btn btn-success"
+          :disabled="getEditedCount() === 0"
+        >
+          Update {{ getEditedCount() }} Edited Item(s)
+        </button>
+        <span v-if="Object.keys(cachedPages).length > 0" class="cache-info">
+          {{ getCacheStatus() }}
+        </span>
       </div>
     </div>
 
@@ -44,11 +54,11 @@
     <!-- Actions Bar - Only show when items are loaded and selections are possible -->
     <div v-if="!loading && qaData.length > 0" class="actions-bar">
       <div class="selection-info">
-        <span v-if="selectedIds.length === 0">No items selected</span>
-        <span v-else>{{ selectedIds.length }} item(s) selected</span>
+        <span v-if="getSelectedCount() === 0">No items selected</span>
+        <span v-else>{{ getSelectedCount() }} item(s) selected</span>
       </div>
       <div class="bulk-actions">
-        <button @click="confirmDeleteSelected" class="btn btn-danger" :disabled="selectedIds.length === 0">
+        <button @click="confirmDeleteSelected" class="btn btn-danger" :disabled="getSelectedCount() === 0">
           Delete Selected
         </button>
         <button @click="toggleSelectAll" class="btn btn-secondary">
@@ -82,18 +92,50 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in qaData" :key="item.id">
+            <tr 
+              v-for="item in qaData" 
+              :key="item._id" 
+              :class="{ 'edited-row': isItemEdited(item._id) }"
+            >
               <td class="checkbox-col">
                 <input
                   type="checkbox"
-                  :id="`item-${item.id}`"
-                  :value="item.id"
-                  v-model="selectedIds"
+                  :id="`item-${item._id}`"
+                  :value="item._id"
+                  v-model="selectedIdsByPage[currentPage]"
                   class="checkbox"
                 />
               </td>
-              <td>{{ extractQuestion(item.$meta.knowledgebase) }}</td>
-              <td>{{ extractAnswer(item.$meta.knowledgebase) }}</td>
+              <td 
+                @click="startEditing(item._id, 'question')" 
+                :class="{ 'editing': isEditingCell(item._id, 'question') }"
+              >
+                <div v-if="isEditingCell(item._id, 'question')" class="edit-container">
+                  <textarea 
+                    v-model="editingContent.text" 
+                    class="edit-input"
+                    @blur="finishEditing(item._id, 'question')"
+                    @keydown.enter.prevent="finishEditing(item._id, 'question')"
+                    ref="editTextarea"
+                  ></textarea>
+                </div>
+                <div v-else>{{ item.question }}</div>
+              </td>
+              <td 
+                @click="startEditing(item._id, 'answer')" 
+                :class="{ 'editing': isEditingCell(item._id, 'answer') }"
+              >
+                <div v-if="isEditingCell(item._id, 'answer')" class="edit-container">
+                  <textarea 
+                    v-model="editingContent.text" 
+                    class="edit-input"
+                    @blur="finishEditing(item._id, 'answer')"
+                    @keydown.enter.prevent="finishEditing(item._id, 'answer')"
+                    ref="editTextarea"
+                  ></textarea>
+                </div>
+                <div v-else>{{ item.answer }}</div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -121,7 +163,7 @@
     <div v-if="showDeleteModal" class="modal-overlay">
       <div class="modal-content">
         <h3>Confirm Delete</h3>
-        <p>Are you sure you want to delete {{ selectedIds.length }} selected item(s)?</p>
+        <p>Are you sure you want to delete {{ getSelectedCount() }} selected item(s)?</p>
         <p class="delete-warning">This action cannot be undone.</p>
         <div class="modal-actions">
           <button @click="deleteSelected" class="btn btn-danger">Delete</button>
@@ -143,27 +185,47 @@ export default {
   data() {
     return {
       qaData: [],
-      selectedIds: [],
+      cachedPages: {}, // Cache for page data: { pageNum: [...data] }
+      lastSeenIds: {}, // Cache for lastSeenIds: { pageNum: lastSeenId }
+      selectedIdsByPage: {}, // Track selections by page: { pageNum: [...selectedIds] }
+      editedItems: {}, // Track edited items: { itemId: { question: '...', answer: '...' } }
+      editingContent: {
+        itemId: null,
+        field: null,
+        text: '',
+        originalText: ''
+      },
       loading: false,
       currentPage: 1,
       totalPages: 0,
       totalItems: 0,
       pageSize: 25,
-      lastSeenId: null,
       tenantPartitionKey: null,
       tempTenantKey: "",
       showDeleteModal: false,
       statusMessage: "",
       statusType: "info", // 'info', 'success', 'error'
       statusTimeout: null,
-      lastSeenIdHistory: [],
+      cacheTimestamp: null, // When the cache was last refreshed
     };
   },
 
   computed: {
     allSelected() {
-      return this.qaData.length > 0 && this.selectedIds.length === this.qaData.length;
+      return this.qaData.length > 0 && 
+             this.selectedIdsByPage[this.currentPage] && 
+             this.selectedIdsByPage[this.currentPage].length === this.qaData.length;
     },
+  },
+
+  watch: {
+    // Update qaData whenever the page changes
+    currentPage: {
+      immediate: true,
+      handler(newPage) {
+        this.loadPageData(newPage);
+      }
+    }
   },
 
   methods: {
@@ -171,45 +233,80 @@ export default {
       if (this.tempTenantKey.trim()) {
         this.tenantPartitionKey = this.tempTenantKey.trim();
         this.tempTenantKey = "";
-        // Reset pagination state
-        this.currentPage = 1;
-        this.lastSeenId = null;
-        this.qaData = [];
-        this.selectedIds = [];
+        // Reset all states
+        this.resetState();
+        this.fetchData(1); // Fetch first page
       }
     },
 
     changeTenant() {
       this.tenantPartitionKey = null;
-      this.qaData = [];
-      this.selectedIds = [];
-      this.currentPage = 1;
-      this.lastSeenId = null;
+      this.resetState();
     },
 
-    async fetchData() {
+    resetState() {
+      this.qaData = [];
+      this.cachedPages = {};
+      this.lastSeenIds = {};
+      this.selectedIdsByPage = {};
+      this.editedItems = {};
+      this.editingContent = {
+        itemId: null,
+        field: null,
+        text: '',
+        originalText: ''
+      };
+      this.currentPage = 1;
+      this.totalPages = 0;
+      this.totalItems = 0;
+      this.cacheTimestamp = null;
+    },
+
+    // Load data from cache or fetch from server
+    async loadPageData(pageNum) {
+      if (!this.tenantPartitionKey) return;
+      
+      // If page exists in cache, use it
+      if (this.cachedPages[pageNum]) {
+        this.qaData = this.cachedPages[pageNum];
+        // Initialize selection array for this page if needed
+        if (!this.selectedIdsByPage[pageNum]) {
+          this.selectedIdsByPage[pageNum] = [];
+        }
+        return;
+      }
+      
+      // Otherwise, fetch from server
+      await this.fetchData(pageNum);
+    },
+
+    // Refresh all data (clear cache and fetch first page)
+    refreshData() {
+      this.resetState();
+      this.fetchData(1);
+      this.showStatus("Data refreshed", "success");
+    },
+
+    async fetchData(pageNum) {
       if (!this.tenantPartitionKey) return;
 
       this.loading = true;
-      this.selectedIds = []; // Clear selections when refreshing data
 
       try {
-        // Construct the URL based on the current page
-        let url = `http://localhost:8090/nexus/notebook/api/qapairs/vectordb?page=${this.currentPage}&pageSize=${this.pageSize}`;
-        // let url = `http://localhost:8090/nexus/notebook/api/qapairs/mongodb?page=${this.currentPage}&pageSize=${this.pageSize}`;
+        let url = `http://localhost:8090/nexus/notebook/api/qapairs/mongodb?page=${pageNum}&pageSize=${this.pageSize}`;
 
         // Add lastSeenId parameter for pages beyond the first page
-        if (this.currentPage > 1 && this.lastSeenId) {
-          url += `&lastSeenId=${this.lastSeenId}`;
+        if (pageNum > 1 && this.lastSeenIds[pageNum - 1]) {
+          url += `&lastSeenId=${this.lastSeenIds[pageNum - 1]}`;
         }
 
-        const response = await fetch(url,{
-  method: 'GET', // or 'POST', 'PUT', etc. as needed
-  headers: {
-    'Content-Type': 'application/json',
-    'tnt': this.tenantPartitionKey // Replace with your actual value
-  }
-});
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            tnt: this.tenantPartitionKey,
+          },
+        });
 
         if (!response.ok) {
           throw new Error(`Error: ${response.status} - ${response.statusText}`);
@@ -217,14 +314,26 @@ export default {
 
         const data = await response.json();
 
+        // Update the current data
         this.qaData = data.data;
         this.totalPages = parseInt(data.totalPages);
         this.totalItems = parseInt(data.total);
-
+        
+        // Cache the retrieved data
+        this.cachedPages[pageNum] = data.data;
+        
+        // Initialize selection array for this page if needed
+        if (!this.selectedIdsByPage[pageNum]) {
+          this.selectedIdsByPage[pageNum] = [];
+        }
+        
         // Update the lastSeenId for pagination
         if (this.qaData.length > 0) {
-          this.lastSeenId = this.qaData[this.qaData.length - 1].id;
+          this.lastSeenIds[pageNum] = this.qaData[this.qaData.length - 1]._id;
         }
+        
+        // Update cache timestamp
+        this.cacheTimestamp = new Date();
       } catch (error) {
         console.error("Error fetching QA pairs:", error);
         this.qaData = [];
@@ -235,15 +344,19 @@ export default {
     },
 
     toggleSelectAll() {
+      if (!this.selectedIdsByPage[this.currentPage]) {
+        this.selectedIdsByPage[this.currentPage] = [];
+      }
+      
       if (this.allSelected) {
-        this.selectedIds = [];
+        this.selectedIdsByPage[this.currentPage] = [];
       } else {
-        this.selectedIds = this.qaData.map((item) => item.id);
+        this.selectedIdsByPage[this.currentPage] = this.qaData.map(item => item._id);
       }
     },
 
     confirmDeleteSelected() {
-      if (this.selectedIds.length > 0) {
+      if (this.getSelectedCount() > 0) {
         this.showDeleteModal = true;
       }
     },
@@ -252,24 +365,36 @@ export default {
       this.showDeleteModal = false;
     },
 
+    // Get all selected IDs across all pages
+    getAllSelectedIds() {
+      let allSelectedIds = [];
+      for (const pageNum in this.selectedIdsByPage) {
+        allSelectedIds = [...allSelectedIds, ...this.selectedIdsByPage[pageNum]];
+      }
+      return allSelectedIds;
+    },
+
+    // Get total count of selected items
+    getSelectedCount() {
+      return this.getAllSelectedIds().length;
+    },
+
     async deleteSelected() {
       this.showDeleteModal = false;
       this.loading = true;
+      const selectedIds = this.getAllSelectedIds();
 
       try {
-        // Prepare the request to delete the selected records
         const url = `http://localhost:8090/nexus/notebook/api/qapairs`;
-        console.log(`tenant_partition_key : ${this.tenantPartitionKey}`);
-        console.log(`ids : ${this.selectedIds}`);
         const response = await fetch(url, {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
-            'tnt' : this.tenantPartitionKey
+            tnt: this.tenantPartitionKey,
           },
           body: JSON.stringify({
             tenant_partition_key: this.tenantPartitionKey,
-            del_ids: this.selectedIds,
+            del_ids: selectedIds,
           }),
         });
 
@@ -277,19 +402,19 @@ export default {
           throw new Error(`Error: ${response.status} - ${response.statusText}`);
         }
 
-        // Show success message
-        this.showStatus(`Successfully deleted ${this.selectedIds.length} item(s)`, "success");
         const data = await response.json();
-        console.log(`response del : ${JSON.stringify(data)}`);
-        // Clear selections and refresh data
-        this.selectedIds = [];
-        this.lastSeenIdHistory = [];
-        this.lastSeenId = null;
-        this.currentPage = 1;
-        this.fetchData();
+        console.log(`response del: ${JSON.stringify(data)}`);
+        
+        // Show success message
+        this.showStatus(`Successfully deleted ${selectedIds.length} item(s)`, "success");
+        
+        // Clear cache and reload data
+        this.resetState();
+        this.fetchData(1);
       } catch (error) {
         console.error("Error deleting records:", error);
         this.showStatus("Failed to delete records: " + error.message, "error");
+      } finally {
         this.loading = false;
       }
     },
@@ -321,39 +446,171 @@ export default {
 
     nextPage() {
       if (this.currentPage < this.totalPages) {
-        this.lastSeenIdHistory.push(this.lastSeenId);
         this.currentPage += 1;
-        this.fetchData();
       }
     },
 
     previousPage() {
       if (this.currentPage > 1) {
         this.currentPage -= 1;
-        // When going back to page 1, reset lastSeenId
-        if (this.currentPage === 1) {
-          this.lastSeenId = null;
-          this.lastSeenIdHistory = [];
-        } else {
-          const len = this.lastSeenIdHistory.length;
-          if (len >= 2) {
-            this.lastSeenId = this.lastSeenIdHistory[len - 2];
-            this.lastSeenIdHistory.pop();
-          }
-        }
-        this.fetchData();
       }
     },
 
-    extractQuestion(text) {
-      const match = text.match(/Question\s*:\s*(.*?)\s*\n/);
-      return match ? match[1].trim() : "No question found";
+    // Format cache status message
+    getCacheStatus() {
+      const pagesCount = Object.keys(this.cachedPages).length;
+      let timeAgo = "";
+      
+      if (this.cacheTimestamp) {
+        const seconds = Math.floor((new Date() - this.cacheTimestamp) / 1000);
+        if (seconds < 60) {
+          timeAgo = `${seconds} seconds ago`;
+        } else if (seconds < 3600) {
+          timeAgo = `${Math.floor(seconds / 60)} minutes ago`;
+        } else {
+          timeAgo = `${Math.floor(seconds / 3600)} hours ago`;
+        }
+      }
+      
+      return `${pagesCount} page(s) cached ${timeAgo}`;
     },
-
-    extractAnswer(text) {
-      const match = text.match(/Answer\s*:\s*(.*)/s);
-      return match ? match[1].trim() : "No answer found";
+    
+    // Start editing a cell
+    startEditing(itemId, field) {
+      // Get the current item from the data
+      const item = this.qaData.find(item => item._id === itemId);
+      if (!item) return;
+      
+      // Set up the editing state
+      this.editingContent = {
+        itemId: itemId,
+        field: field,
+        text: item[field],
+        originalText: item[field]
+      };
+      
+      // Focus the textarea after Vue updates the DOM
+      this.$nextTick(() => {
+        if (this.$refs.editTextarea) {
+          const textarea = Array.isArray(this.$refs.editTextarea) 
+            ? this.$refs.editTextarea[0] 
+            : this.$refs.editTextarea;
+          
+          if (textarea) {
+            textarea.focus();
+            textarea.select();
+          }
+        }
+      });
     },
+    
+    // Complete editing and save changes
+    finishEditing(itemId, field) {
+      // Make sure we're editing this item and field
+      if (this.editingContent.itemId !== itemId || this.editingContent.field !== field) {
+        return;
+      }
+      
+      const newText = this.editingContent.text.trim();
+      const originalText = this.editingContent.originalText.trim();
+      
+      // Only update if content changed
+      if (newText !== originalText) {
+        // Find item in the current data and update it
+        const item = this.qaData.find(item => item._id === itemId);
+        if (item) {
+          item[field] = newText;
+          
+          // Update the item in cache as well
+          Object.values(this.cachedPages).forEach(pageData => {
+            const cachedItem = pageData.find(i => i._id === itemId);
+            if (cachedItem) {
+              cachedItem[field] = newText;
+            }
+          });
+          
+          // Track this item as edited
+          if (!this.editedItems[itemId]) {
+            this.editedItems[itemId] = {
+              _id: itemId,
+              question: item.question,
+              answer: item.answer
+            };
+          } else {
+            this.editedItems[itemId][field] = newText;
+          }
+        }
+      }
+      
+      // Clear editing state
+      this.editingContent = {
+        itemId: null,
+        field: null,
+        text: '',
+        originalText: ''
+      };
+    },
+    
+    // Check if we're currently editing a specific cell
+    isEditingCell(itemId, field) {
+      return this.editingContent.itemId === itemId && this.editingContent.field === field;
+    },
+    
+    // Check if an item has been edited
+    isItemEdited(itemId) {
+      return !!this.editedItems[itemId];
+    },
+    
+    // Get count of edited items
+    getEditedCount() {
+      return Object.keys(this.editedItems).length;
+    },
+    
+    // Send all edited items to the update API
+    async updateEditedItems() {
+      if (this.getEditedCount() === 0) return;
+      
+      this.loading = true;
+      const editedItemsArray = Object.values(this.editedItems);
+      
+      try {
+        // This is where you would make your API call
+        // For now, we'll just simulate a successful update
+        console.log("Sending updated items to API:", editedItemsArray);
+        
+        // You would replace this with your actual API call:
+        const response = await fetch('http://localhost:8090/nexus/notebook/api/qapairs', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'tnt': this.tenantPartitionKey
+          },
+          body: JSON.stringify({
+            // tenant_partition_key: this.tenantPartitionKey,
+            updateDocs : editedItemsArray
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status} - ${response.statusText}`);
+        }
+        
+        // Simulate a delay for the API call
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Show success message
+        this.showStatus(`Successfully updated ${editedItemsArray.length} item(s)`, "success");
+        
+        // Clear edited items after successful update
+        this.editedItems = {};
+        this.refreshData();
+      } catch (error) {
+        console.error("Error updating records:", error);
+        this.showStatus("Failed to update records: " + error.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    }
   },
 };
 </script>
@@ -468,6 +725,15 @@ export default {
   background-color: #c0392b;
 }
 
+.btn-success {
+  background-color: #2ecc71;
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: #27ae60;
+}
+
 .btn-pagination {
   background-color: #f8f9fa;
   color: #495057;
@@ -495,6 +761,20 @@ export default {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.data-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cache-info {
+  font-size: 14px;
+  color: #6c757d;
+  background-color: #e9ecef;
+  padding: 4px 10px;
+  border-radius: 12px;
 }
 
 /* Actions Bar */
@@ -617,6 +897,41 @@ export default {
 
 .qa-table tr:hover {
   background-color: #f8f9fa;
+}
+
+.qa-table tr.edited-row {
+  background-color: #d4edff;
+}
+
+.qa-table tr.edited-row:hover {
+  background-color: #c2e5ff;
+}
+
+.qa-table td {
+  position: relative;
+  cursor: pointer;
+}
+
+.qa-table td.editing {
+  padding: 0;
+  cursor: auto;
+}
+
+.edit-container {
+  height: 100%;
+  width: 100%;
+}
+
+.edit-input {
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 2px solid #3498db;
+  resize: vertical;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
 }
 
 /* Pagination Styles */
@@ -764,6 +1079,11 @@ export default {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+
+  .data-controls {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .actions-bar {
